@@ -1,5 +1,7 @@
 import React from 'react';
 import WelcomeScreen from './pages/WelcomeScreen'
+import Loading from './components/Loading'
+import GameBoard from './components/GameBoard'
 import axios from 'axios'
 
 const baseUrl = 'http://jservice.io/api';
@@ -13,46 +15,66 @@ class App extends React.Component {
     questions: [],
     user: {},
     maxCategories: 0,
+    loading: false,
+    readyToPlay: false,
   }
 
-  buildGame = () => {
+  buildGame = async () => {
+    this.setState({ loading: true });
     // Get max number of categories
-    axios.get(`${baseUrl}/categories`)
-      .then(res => {
-        this.setState({ maxCategories: res.data[0].id }, () => {
-          const retrieveCategories = this.getCategories();
-          if (retrieveCategories) {
-            this.layoutGame()
-          }
-        })
-      })
+    try {
+      const categoryRes = await axios.get(`${baseUrl}/categories`);
+      this.setState({ maxCategories: categoryRes.data[0].id }, this.fetchAndSetCategories)
+    } catch (e) {
+      console.log(e);
+      this.setState({ loading: false });
+    }
   }
 
-  getCategories = () => {
-    const { categories, maxCategories } = this.state;
-    if (categories.length < numberOfCategories) {
-      // Get random category
-      const categoryID = this.getRandomInt(maxCategories);
+  fetchAndSetCategories = async () => {
+    this.setState({ loading: false, readyToPlay: true })
+    let fetchedCategories = 0;
+    while(fetchedCategories < numberOfCategories) {
+      try {
+        const gotCategory = await this.getCategories();
+        if (gotCategory) {
+          fetchedCategories++;
+        }
+      } catch (e) {
+        console.log(e);
+        break;
+      }
+    }
+  }
 
-      axios.get(`${baseUrl}/clues?category=${categoryID}`)
-        .then(res => {
-          if (res.data.length >= numberOfQuestionsPerCategory) {
-            const questions = this.getQuestionsFromCategory(res.data);
-            if (questions.length === numberOfQuestionsPerCategory) {
-              this.setState({ 
-                categories: [...this.state.categories, categoryID],
-                questions: [...this.state.questions, [...questions]],
-              })
-            }
-          }
-          this.getCategories();
-        })
-        .catch(error => {
-          // handle error
-          console.log(error);
-        })
+  getRandomCategory = maxCategories => {
+    const randomCategory = this.getRandomInt(maxCategories)
+    if (!this.state.categories.includes(randomCategory)) {
+      return randomCategory;
     } else {
-      console.log(this.state);
+      this.getRandomCategory(maxCategories);
+    }
+  }
+ 
+  getCategories = async () => {
+    const { maxCategories } = this.state;
+    // Get random category
+    const categoryID = this.getRandomCategory(maxCategories);
+    try {
+      const categoryRes = await axios.get(`${baseUrl}/category?id=${categoryID}`);
+      if (categoryRes.data.clues_count >= numberOfQuestionsPerCategory) {
+        const questions = this.getQuestionsFromCategory(categoryRes.data.clues);
+        if (questions.length === numberOfQuestionsPerCategory) {
+          this.setState({ 
+            categories: [...this.state.categories, {id: categoryID, name: categoryRes.data.title}],
+            questions: [...this.state.questions, [...questions]],
+          })
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      console.log(e);
     }
   }
 
@@ -60,10 +82,10 @@ class App extends React.Component {
   
   getQuestionsFromCategory = arr => {
     const questions = []
-    points.map(point => {
-      const question = arr.find(obj => {
-        if (obj.value === point) {
-          return obj.value === point
+    points.forEach(point => {
+      const question = arr.find(question => {
+        if (question.value === point && question.invalid_count === null) {
+          return question.value === point
         } else {
           return false;
         }
@@ -76,17 +98,15 @@ class App extends React.Component {
     return questions;
   }
 
-  layoutGame = () => {
-    console.log(this.state);
-  }
-
   render() {
-  const Context = React.createContext(this.state);
+    const Context = React.createContext(this.state);
+    const { loading, categories, questions, user, readyToPlay } = this.state;
 
     return (
       <Context.Provider>
         <div className="App">
-          <WelcomeScreen gameInit={this.buildGame}/>
+          { readyToPlay ? <GameBoard categories={categories} questions={questions} /> : <WelcomeScreen gameInit={this.buildGame}/> }
+          { loading ? <Loading text="Generating questions..." /> : null }
         </div>
       </Context.Provider>
   );

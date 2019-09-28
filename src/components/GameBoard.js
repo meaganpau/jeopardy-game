@@ -4,10 +4,10 @@ const GameBoard = ({ categories, questions }) => {
     return (
         <div>
             { categories.map((category, i) => (
-                <div>
+                <div key={category.id}>
                     <h3>{category.name}</h3>
                     {questions[i].map(question => (
-                        <div>
+                        <div key={question.id}>
                             <p>{question.question}</p>
                             <p>{question.answer}</p>
                             <p>{question.value}</p>
